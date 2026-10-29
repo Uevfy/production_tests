@@ -9,12 +9,12 @@ from FWCore.ParameterSet.VarParsing import VarParsing
 # option parsing
 options = VarParsing('python')
 options.setDefault('outputFile', 'file:partGun_PDGid22_x96_Pt1.0To100.0_GSD_1.root')
-options.setDefault('maxEvents', 10)
+options.setDefault('maxEvents', 1000)
 options.register("pileup", 0, VarParsing.multiplicity.singleton, VarParsing.varType.int,
     "pileup")
 options.register("seed", 1, VarParsing.multiplicity.singleton, VarParsing.varType.int,
     "random seed")
-options.register("nThreads", 1, VarParsing.multiplicity.singleton, VarParsing.varType.int,
+options.register("nThreads", 10, VarParsing.multiplicity.singleton, VarParsing.varType.int,
     "number of threads")
 options.register("nParticles", 1, VarParsing.multiplicity.singleton, VarParsing.varType.int,
     "number of particles in gun")
@@ -52,10 +52,10 @@ def calculate_rho(z, eta):
     return z * math.tan(2 * math.atan(math.exp(-eta)))
 
 
-process.generator = cms.EDProducer("FlatEtaRangeGunProducer",
+process.generator = cms.EDProducer("edm::FlatEtaRangeGunProducer",
     PGunParameters = cms.PSet(
     # particle ids
-    PartID=cms.vint32(15), #(22, 22, 11,-11,211,-211,13,-13, 310, 130, 111, 311, 321, -321),
+    PartID=cms.vint32(11), #(22, 22, 11,-11,211,-211,13,-13, 310, 130, 111, 311, 321, -321),
     # max number of particles to shoot at a time
     nParticles=cms.int32(options.nParticles),
     # shoot exactly the particles defined in particleIDs in that order
@@ -104,6 +104,10 @@ process.generator = cms.EDProducer("FlatEtaRangeGunProducer",
 #)
 
 process.options.numberOfThreads=cms.untracked.uint32(options.nThreads)
+
+# Modify tracking thresholds for fine calorimeter segmentation
+print(process.g4SimHits.CaloTrkProcessing.EminFineTrack) #= cms.double(0.0)
+process.g4SimHits.CaloTrkProcessing.EminFinePhoton = cms.double(0.0)
 
 #load and configure the appropriate pileup modules
 if options.pileup > 0:
