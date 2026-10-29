@@ -14,6 +14,8 @@ options.register("nThreads", 1, VarParsing.multiplicity.singleton, VarParsing.va
     "number of threads")
 options.register("runPFTruth", 0, VarParsing.multiplicity.singleton, VarParsing.varType.int,
     "Don't run PFTruth (currently not working with pileup)")
+options.register("boundaryCaloPartIdx", 1, VarParsing.multiplicity.singleton, VarParsing.varType.int,
+    "Add BoundarySimCluster_CaloPartIdx (needs the SimClusterParentRefToCaloParticleAssociationProducer plugin)")
 options.parseArguments()
 
 # import of standard configurations
@@ -446,6 +448,85 @@ from DPGAnalysis.HGCalNanoAOD.nanoHGCML_cff import customizeReco,customizeMerged
 # merged simclusters (turn off if you aren't running through PEPR)
 process = customizeMergedSimClusters(process)
 process = customizeReco(process)
+
+# Boundary SimCluster tables.
+#
+# The standard tables (SimCluster_*, RecHitHGC_SimCluster*) read mix:MergedCaloTruth,
+# which is the legacy collection (one SimCluster per saved SimTrack with simhits).
+# CaloTruthAccumulator also stores mix:MergedCaloTruthBoundaryTrackSimCluster
+# (one SimCluster per SimTrack crossing the calorimeter boundary). The modules below
+# write it as a separate BoundarySimCluster table, reusing the same producers, and
+# leave the legacy tables untouched.
+_boundarySC = cms.InputTag("mix", "MergedCaloTruthBoundaryTrackSimCluster")
+
+# BoundarySimCluster_* (same variables as SimCluster_*)
+process.boundarySimClusterTable = process.simClusterTable.clone(
+    src = _boundarySC,
+    name = "BoundarySimCluster",
+    doc = "Boundary SimClusters (mix:MergedCaloTruthBoundaryTrackSimCluster)",
+)
+
+# RecHitHGC_BoundarySimClusterNumMatch/BestMatchIdx/BestMatchQual and
+# RecHitHGC_BoundarySimCluster_MatchIdx/MatchQual (all matches, ordered by energy fraction)
+process.hgcRecHitsToBoundarySimClusters = process.hgcRecHitsToSimClusters.clone(
+    simClusters = _boundarySC,
+)
+process.hgcRecHitsToBoundarySimClusterTable = process.hgcRecHitsToSimClusterTable.clone(
+    branchName = "BoundarySimCluster",
+    objMap = cms.InputTag("hgcRecHitsToBoundarySimClusters", "hgcRecHitsToSimClus"),
+    docString = "All boundary SimClusters responsible for sim energy in RecHit DetId (ordered by fraction of energy)",
+)
+
+# BoundarySimCluster_recEnergy
+process.boundarySimClusterRecEnergyTable = process.simClusterRecEnergyTable.clone(
+    src = _boundarySC,
+    objName = "BoundarySimCluster",
+    valueMap = cms.InputTag("hgcRecHitsToBoundarySimClusters"),
+    docString = "Reconstructed energy associated to boundary SimCluster",
+)
+
+# SimTrack_BoundarySimClusterIdx (set only for the boundary-crossing track of each cluster)
+process.simTrackToBoundarySimCluster = process.simTrackToSimCluster.clone(
+    simClusters = _boundarySC,
+)
+process.simTrackToBoundarySimClusterTable = process.simTrackToSimClusterTable.clone(
+    branchName = "BoundarySimCluster",
+    objMap = cms.InputTag("simTrackToBoundarySimCluster"),
+    docString = "Boundary SimCluster rooted at this track",
+)
+
+process.boundarySimClusterTask = cms.Task(
+    process.boundarySimClusterTable,
+    process.hgcRecHitsToBoundarySimClusters,
+    process.hgcRecHitsToBoundarySimClusterTable,
+    process.boundarySimClusterRecEnergyTable,
+    process.simTrackToBoundarySimCluster,
+    process.simTrackToBoundarySimClusterTable,
+)
+
+# BoundarySimCluster_CaloPartIdx. The legacy simClusterToCaloPart producer uses
+# CaloParticle::simClusters(), which points into the legacy collection, so it can't be
+# reused. Instead, read the parent RefVector that CaloTruthAccumulator stores under the
+# same label (one Ref per boundary SimCluster, keyed by CaloParticle index).
+if options.boundaryCaloPartIdx:
+    process.boundarySimClusterToCaloPart = cms.EDProducer("SimClusterParentRefToCaloParticleAssociationProducer",
+        simClusters = _boundarySC,
+        parentRefs = _boundarySC,
+        caloParticles = cms.InputTag("mix", "MergedCaloTruth"),
+    )
+    process.boundarySimClusterToCaloPartTable = process.simClusterToCaloPartTable.clone(
+        src = _boundarySC,
+        objName = "BoundarySimCluster",
+        objMap = cms.InputTag("boundarySimClusterToCaloPart"),
+        docString = "Index of CaloPart containing boundary SimCluster",
+    )
+    process.boundarySimClusterTask.add(
+        process.boundarySimClusterToCaloPart,
+        process.boundarySimClusterToCaloPartTable,
+    )
+
+process.nanoAOD_step.associate(process.boundarySimClusterTask)
+process.NANOAODSIMoutput.outputCommands.append("keep nanoaodFlatTable_*oundarySimCluster*_*_*")
 
 # End of customisation functions
 
