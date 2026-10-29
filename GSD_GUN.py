@@ -110,8 +110,8 @@ if options.gun == "flatEta":
             MinPhi=cms.double(-math.pi),
             MaxPhi=cms.double(math.pi),
             # eta range
-            MinEta=cms.double(1.5),
-            MaxEta=cms.double(3.0),
+            MinEta=cms.double(1.7),
+            MaxEta=cms.double(2.7),
         ),
         AddAntiParticle=cms.bool(False),
         debug=cms.untracked.bool(True),
